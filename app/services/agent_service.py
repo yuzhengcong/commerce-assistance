@@ -4,6 +4,8 @@ import json
 from typing import List, Dict, Optional, Any
 from app.models.chat import ChatMessage, ConversationContext
 from app.models.product import ProductResponse
+import logging; 
+log = logging.getLogger("agent_service")
 
 class AgentService:
     def __init__(self):
@@ -12,13 +14,13 @@ class AgentService:
         self.mock_mode = False
         self.system_prompt = """你是一个专业的电商购物助手，类似于Amazon的Rufus。你有以下工具可以使用：
 
-1. search_products: 搜索商品
-2. get_product_details: 获取商品详情
-3. recommend_products: 推荐商品
-4. search_by_image: 通过图片搜索商品
+            1. search_products: 搜索商品
+            2. get_product_details: 获取商品详情
+            3. recommend_products: 推荐商品
+            4. search_by_image: 通过图片搜索商品
 
-当用户询问商品相关问题时，你应该主动使用这些工具来帮助用户。
-请用中文回复用户，保持简洁明了的回答风格。"""
+            当用户询问商品相关问题时，你应该主动使用这些工具来帮助用户。
+            请用中文回复用户，保持简洁明了的回答风格。"""
 
         # 定义可用的工具
         self.tools = [
@@ -97,12 +99,14 @@ class AgentService:
         生成AI回复，支持工具调用
         """
         try:
-            # 如果是模拟模式，返回模拟响应
-            if self.mock_mode:
-                return await self._generate_mock_response(user_message)
+            # 模拟模式：无需真实API，直接给出演示响应
+
+            log.info("conversation_history: %s", conversation_history)
             
             # 构建消息历史
             messages = [{"role": "system", "content": self.system_prompt}]
+            log.debug("System prompt prepared for chat completion")
+            
             
             # 添加对话历史
             if conversation_history:
@@ -120,7 +124,7 @@ class AgentService:
             
             # 第一次调用：让AI决定是否需要使用工具
             response = self.client.chat.completions.create(
-                model="gpt-3.5-turbo",
+                model="gpt-4o-mini",
                 messages=messages,
                 tools=self.tools,
                 tool_choice="auto",  # 让AI自动决定是否使用工具
@@ -134,6 +138,7 @@ class AgentService:
             if response_message.tool_calls:
                 # AI决定使用工具
                 messages.append(response_message)
+                log.info(f"AI decided to use tools: {response_message.tool_calls}")
                 
                 # 执行工具调用
                 for tool_call in response_message.tool_calls:
@@ -153,7 +158,7 @@ class AgentService:
                 
                 # 第二次调用：基于工具结果生成最终回复
                 final_response = self.client.chat.completions.create(
-                    model="gpt-3.5-turbo",
+                    model="gpt-4o-mini",
                     messages=messages,
                     max_tokens=500,
                     temperature=0.7
@@ -175,71 +180,20 @@ class AgentService:
                 }
             else:
                 # AI决定不使用工具，直接回复
+                log.info(f"AI decided not to use tools: {response_message.content}")
                 return {
                     "response": response_message.content,
                     "tool_calls": []
                 }
                 
         except Exception as e:
-            print(f"Agent Service Error: {e}")
+            log.exception("Agent Service encountered an error")
             return {
                 "response": "抱歉，我现在无法处理您的请求。请稍后再试。",
                 "tool_calls": []
             }
 
-    async def _generate_mock_response(self, user_message: str) -> Dict[str, Any]:
-        """
-        生成模拟响应，用于演示工具调用
-        """
-        user_message_lower = user_message.lower()
-        
-        # 根据用户消息内容决定是否模拟工具调用
-        if any(keyword in user_message_lower for keyword in ["搜索", "找", "买", "购买", "商品"]):
-            # 模拟搜索商品工具调用
-            mock_tool_call = {
-                "function": "search_products",
-                "arguments": {"query": "运动T恤" if "t恤" in user_message_lower else "商品"},
-                "result": await self._search_products("运动T恤" if "t恤" in user_message_lower else "商品")
-            }
-            
-            return {
-                "response": f"我为您搜索了相关商品，找到了一些不错的选择。根据搜索结果，我推荐您看看这些商品。",
-                "tool_calls": [mock_tool_call]
-            }
-        
-        elif any(keyword in user_message_lower for keyword in ["详情", "详细", "信息", "id"]):
-            # 模拟获取商品详情工具调用
-            mock_tool_call = {
-                "function": "get_product_details",
-                "arguments": {"product_id": 1},
-                "result": await self._get_product_details(1)
-            }
-            
-            return {
-                "response": f"我为您查询了商品的详细信息，这是一款很不错的商品。",
-                "tool_calls": [mock_tool_call]
-            }
-        
-        elif any(keyword in user_message_lower for keyword in ["推荐", "建议"]):
-            # 模拟推荐商品工具调用
-            mock_tool_call = {
-                "function": "recommend_products",
-                "arguments": {"user_preferences": user_message},
-                "result": await self._recommend_products(user_message)
-            }
-            
-            return {
-                "response": f"根据您的需求，我为您推荐了一些商品，希望您会喜欢。",
-                "tool_calls": [mock_tool_call]
-            }
-        
-        else:
-            # 普通对话，不使用工具
-            return {
-                "response": f"您好！我是AI电商助手。您可以问我关于商品搜索、商品详情或商品推荐的问题。比如：'我想买一件运动T恤'、'推荐一些300元以下的耳机'等。",
-                "tool_calls": []
-            }
-
+    
     async def _execute_tool(self, function_name: str, arguments: Dict) -> Any:
         """
         执行具体的工具函数

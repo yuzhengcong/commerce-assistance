@@ -1,60 +1,60 @@
-from fastapi import APIRouter, HTTPException
-from app.models.product import ProductResponse
+from fastapi import APIRouter, HTTPException, Depends
+from app.models.product import Product, ProductResponse
 from typing import List
+from sqlalchemy.orm import Session
+from app.database.database import get_db
+import json
 
 router = APIRouter()
 
-# 临时的商品数据（后续会连接数据库）
-SAMPLE_PRODUCTS = [
-    {
-        "id": 1,
-        "name": "运动T恤",
-        "description": "透气舒适的运动T恤，适合健身和日常穿着",
-        "price": 89.0,
-        "category": "服装",
-        "brand": "Nike",
-        "image_url": "https://example.com/tshirt.jpg",
-        "tags": ["运动", "T恤", "透气"],
-        "stock": 50,
-        "rating": 4.5,
-        "created_at": "2024-01-01T00:00:00"
-    },
-    {
-        "id": 2,
-        "name": "无线蓝牙耳机",
-        "description": "高音质无线蓝牙耳机，降噪功能强大",
-        "price": 299.0,
-        "category": "电子产品",
-        "brand": "Sony",
-        "image_url": "https://example.com/headphones.jpg",
-        "tags": ["耳机", "蓝牙", "降噪"],
-        "stock": 30,
-        "rating": 4.8,
-        "created_at": "2024-01-01T00:00:00"
-    }
-]
-
 @router.get("/products", response_model=List[ProductResponse])
-async def get_products():
+async def get_products(db: Session = Depends(get_db)):
     """
     获取商品列表
     """
     try:
-        return SAMPLE_PRODUCTS
+        products = db.query(Product).all()
+        return [
+            ProductResponse(
+                id=p.id,
+                name=p.name,
+                description=p.description,
+                price=p.price,
+                category=p.category,
+                brand=p.brand,
+                image_url=p.image_url,
+                tags=json.loads(p.tags) if p.tags else [],
+                stock=p.stock,
+                rating=p.rating,
+                created_at=p.created_at
+            ) for p in products
+        ]
     except Exception as e:
         print(f"Get Products Error: {e}")
         raise HTTPException(status_code=500, detail="获取商品列表时发生错误")
 
 @router.get("/products/{product_id}", response_model=ProductResponse)
-async def get_product(product_id: int):
+async def get_product(product_id: int, db: Session = Depends(get_db)):
     """
     获取单个商品详情
     """
     try:
-        product = next((p for p in SAMPLE_PRODUCTS if p["id"] == product_id), None)
+        product = db.query(Product).filter(Product.id == product_id).first()
         if not product:
             raise HTTPException(status_code=404, detail="商品未找到")
-        return product
+        return ProductResponse(
+            id=product.id,
+            name=product.name,
+            description=product.description,
+            price=product.price,
+            category=product.category,
+            brand=product.brand,
+            image_url=product.image_url,
+            tags=json.loads(product.tags) if product.tags else [],
+            stock=product.stock,
+            rating=product.rating,
+            created_at=product.created_at
+        )
     except HTTPException:
         raise
     except Exception as e:

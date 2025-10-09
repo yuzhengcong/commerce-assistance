@@ -2,13 +2,46 @@ from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.staticfiles import StaticFiles
 import os
+import logging
+logging.basicConfig(level=logging.INFO)
+
 from dotenv import load_dotenv
+from colorlog import ColoredFormatter
+
+class HighlightAtFormatter(ColoredFormatter):
+    """Colored formatter with INFO message body highlighting."""
+    def format(self, record):
+        # Defer to ColoredFormatter; coloring handled via secondary_log_colors
+        return super().format(record)
+
+# Load environment variables ASAP (before importing modules that read env)
+load_dotenv()
+
+# Configure colored logging early
+handler = logging.StreamHandler()
+formatter = HighlightAtFormatter(
+    "%(log_color)s%(levelname)s%(reset)s:     %(name)s:%(message_log_color)s%(message)s%(reset)s",
+    log_colors={
+        'DEBUG': 'cyan',
+        'INFO': 'blue',
+        'WARNING': 'yellow',
+        'ERROR': 'red',
+        'CRITICAL': 'bold_red'
+    },
+    secondary_log_colors={
+        'message': {
+            'INFO': 'bold_blue'
+        }
+    }
+)
+handler.setFormatter(formatter)
+root_logger = logging.getLogger()
+root_logger.handlers = []
+root_logger.addHandler(handler)
+root_logger.setLevel(logging.INFO)
 
 from app.api import chat, products, recommendations
 from app.database.database import init_db
-
-# Load environment variables
-load_dotenv()
 
 app = FastAPI(
     title="AI Commerce Assistant API",

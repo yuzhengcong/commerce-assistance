@@ -1,10 +1,8 @@
 from sqlalchemy import Column, Integer, String, Float, Text, DateTime
-from sqlalchemy.ext.declarative import declarative_base
 from pydantic import BaseModel
 from typing import Optional, List
 from datetime import datetime
-
-Base = declarative_base()
+from app.database.database import Base
 
 class Product(Base):
     __tablename__ = "products"
@@ -19,6 +17,7 @@ class Product(Base):
     tags = Column(String)  # JSON string of tags
     stock = Column(Integer, default=0)
     rating = Column(Float, default=0.0)
+    embedding = Column(Text, nullable=True)  # JSON string of embedding vector
     created_at = Column(DateTime, default=datetime.utcnow)
 
 # Pydantic models for API
