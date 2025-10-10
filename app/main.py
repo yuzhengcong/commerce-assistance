@@ -1,6 +1,7 @@
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.staticfiles import StaticFiles
+from fastapi.responses import FileResponse
 import os
 import logging
 logging.basicConfig(level=logging.INFO)
@@ -40,7 +41,7 @@ root_logger.handlers = []
 root_logger.addHandler(handler)
 root_logger.setLevel(logging.INFO)
 
-from app.api import chat, products, recommendations
+from app.api import chat, products, admin
 from app.database.database import init_db
 
 app = FastAPI(
@@ -66,7 +67,7 @@ async def startup_event():
 # Include routers
 app.include_router(chat.router, prefix="/api", tags=["chat"])
 app.include_router(products.router, prefix="/api", tags=["products"])
-app.include_router(recommendations.router, prefix="/api", tags=["recommendations"])
+app.include_router(admin.router, prefix="/api", tags=["admin"])
 
 @app.get("/")
 async def root():
@@ -79,3 +80,14 @@ async def root():
 @app.get("/health")
 async def health_check():
     return {"status": "healthy"}
+
+# Serve demo.html from backend directory for plain HTML usage
+BACKEND_DIR = os.path.abspath(os.path.join(os.path.dirname(__file__), ".."))
+app.mount("/static", StaticFiles(directory=BACKEND_DIR), name="static")
+
+@app.get("/demo.html")
+async def serve_demo_html():
+    demo_path = os.path.join(BACKEND_DIR, "demo.html")
+    if os.path.exists(demo_path):
+        return FileResponse(demo_path, media_type="text/html")
+    return {"error": "demo.html not found"}

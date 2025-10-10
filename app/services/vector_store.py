@@ -1,6 +1,6 @@
 import os
 import json
-from typing import List, Tuple, Optional
+from typing import List, Tuple, Optional, Dict
 import numpy as np
 import faiss
 import logging
@@ -14,32 +14,35 @@ INDEX_DIR = os.path.join(BASE_DIR, "data", "faiss")
 INDEX_FILE = os.path.join(INDEX_DIR, "products.index")
 META_FILE = os.path.join(INDEX_DIR, "products_meta.json")
 
+# Simple in-memory cache to avoid repeated embedding calls for identical text
+_EMBED_CACHE: Dict[str, np.ndarray] = {}
+
 
 def _normalize(v: np.ndarray) -> np.ndarray:
     n = np.linalg.norm(v)
     return v / n if n > 0 else v
 
 
-def _get_embedding(text: str) -> Optional[np.ndarray]:
+def _get_embedding(text: str) -> np.ndarray:
     api_key = os.getenv("OPENAI_API_KEY")
-    if api_key:
-        try:
-            import openai
-            client = openai.OpenAI(api_key=api_key)
-            resp = client.embeddings.create(
-                model="text-embedding-3-small",
-                input=text
-            )
-            return np.array(resp.data[0].embedding, dtype=np.float32)
-        except Exception as e:
-            log.exception("Embedding API failed; falling back to local hash embedding")
+    key = text.strip().lower()
+    # 命中缓存直接返回
+    cached = _EMBED_CACHE.get(key)
+    if cached is not None:
+        return cached
 
-    # 本地回退：基于分词的哈希向量（稳定、快速）
-    dim = 384
-    vec = np.zeros(dim, dtype=np.float32)
-    for tok in text.lower().split():
-        idx = (hash(tok) % dim)
-        vec[idx] += 1.0
+    # 强制要求使用 OpenAI 嵌入，不再提供本地哈希备用方案
+    if not api_key:
+        raise RuntimeError("OPENAI_API_KEY not configured; embeddings require OpenAI API")
+
+    import openai
+    client = openai.OpenAI(api_key=api_key, max_retries=0)
+    resp = client.embeddings.create(
+        model="text-embedding-3-small",
+        input=text
+    )
+    vec = np.array(resp.data[0].embedding, dtype=np.float32)
+    _EMBED_CACHE[key] = vec
     return vec
 
 
@@ -103,3 +106,28 @@ def query(db: Session, query_text: str, top_k: int = 5) -> List[Product]:
     # 保留检索顺序
     id_to_row = {r.id: r for r in rows}
     return [id_to_row[i] for i in hit_ids if i in id_to_row]
+
+
+def query_with_scores(db: Session, query_text: str, top_k: int = 5) -> List[Tuple[Product, float]]:
+    """Return products with similarity scores (inner product on normalized vectors).
+    The score roughly corresponds to cosine similarity in [0, 1] when vectors are non-negative.
+    """
+    index, ids = load_index()
+    if index is None or not ids:
+        index, ids = build_index(db)
+
+    q = _get_embedding(query_text)
+    qn = _normalize(q.astype(np.float32))
+    D, I = index.search(np.expand_dims(qn, axis=0), top_k)
+
+    hit = []
+    if ids:
+        rows = db.query(Product).filter(Product.id.in_(ids)).all()
+        id_to_row = {r.id: r for r in rows}
+        for pos, idx in enumerate(I[0]):
+            if idx >= 0 and idx < len(ids):
+                pid = ids[idx]
+                prod = id_to_row.get(pid)
+                if prod is not None:
+                    hit.append((prod, float(D[0][pos])))
+    return hit

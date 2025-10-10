@@ -1,5 +1,5 @@
 from fastapi import APIRouter, HTTPException, Depends
-from app.models.product import Product, ProductResponse
+from app.models.product import Product, ProductResponse, ProductCreate
 from typing import List
 from sqlalchemy.orm import Session
 from app.database.database import get_db
@@ -32,6 +32,44 @@ async def get_products(db: Session = Depends(get_db)):
     except Exception as e:
         print(f"Get Products Error: {e}")
         raise HTTPException(status_code=500, detail="获取商品列表时发生错误")
+
+@router.post("/products", response_model=ProductResponse)
+async def create_product(request: ProductCreate, db: Session = Depends(get_db)):
+    """
+    创建单个商品并插入数据库
+    """
+    try:
+        product = Product(
+            name=request.name,
+            description=request.description,
+            price=request.price,
+            category=request.category,
+            brand=request.brand,
+            image_url=request.image_url,
+            tags=json.dumps(request.tags or [], ensure_ascii=False),
+            stock=request.stock,
+            rating=request.rating,
+        )
+        db.add(product)
+        db.commit()
+        db.refresh(product)
+
+        return ProductResponse(
+            id=product.id,
+            name=product.name,
+            description=product.description,
+            price=product.price,
+            category=product.category,
+            brand=product.brand,
+            image_url=product.image_url,
+            tags=json.loads(product.tags) if product.tags else [],
+            stock=product.stock,
+            rating=product.rating,
+            created_at=product.created_at,
+        )
+    except Exception as e:
+        print(f"Create Product Error: {e}")
+        raise HTTPException(status_code=500, detail="创建商品时发生错误")
 
 @router.get("/products/{product_id}", response_model=ProductResponse)
 async def get_product(product_id: int, db: Session = Depends(get_db)):

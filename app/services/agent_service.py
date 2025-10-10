@@ -6,84 +6,67 @@ from app.models.chat import ChatMessage, ConversationContext
 from app.models.product import ProductResponse
 import logging; 
 log = logging.getLogger("agent_service")
+from app.database.database import SessionLocal
+from app.services.recommendation_service import recommend_by_text
+from app.services.vector_store import query_with_scores as vs_query_with_scores
 
 class AgentService:
     def __init__(self):
         api_key = os.getenv("OPENAI_API_KEY")
         self.client = openai.OpenAI(api_key=api_key)
         self.mock_mode = False
-        self.system_prompt = """你是一个专业的电商购物助手，类似于Amazon的Rufus。你有以下工具可以使用：
+        self.system_prompt = """You are a helpful shopping assistant for an e-commerce site.
 
-            1. search_products: 搜索商品
-            2. get_product_details: 获取商品详情
-            3. recommend_products: 推荐商品
-            4. search_by_image: 通过图片搜索商品
+        Capabilities:
+        1) General conversation with the agent (e.g., 'What's your name?', 'What can you do?')
+        2) Text-Based Product Recommendation (e.g., 'Recommend me a t-shirt for sports.')
+        3) Image-Based Product Search.
 
-            当用户询问商品相关问题时，你应该主动使用这些工具来帮助用户。
-            请用中文回复用户，保持简洁明了的回答风格。"""
+        Important constraints:
+        - Product recommendation and search are limited to items in a predefined catalog.
+        - Keep responses concise and clear.
+        - Reply in English.
+        - When tool results are present, synthesize them into a natural sentence recommendation.
+          For example: "I recommend the blue t-shirt for you." Do not mention tools or IDs.
+          Prefer top relevant items; reference product names (and price if helpful)."""
 
-        # 定义可用的工具
+        # Define available tools (English, limited to catalog)
         self.tools = [
             {
                 "type": "function",
                 "function": {
-                    "name": "search_products",
-                    "description": "搜索商品",
-                    "parameters": {
-                        "type": "object",
-                        "properties": {
-                            "query": {
-                                "type": "string",
-                                "description": "搜索关键词"
-                            },
-                            "category": {
-                                "type": "string",
-                                "description": "商品分类（可选）"
-                            },
-                            "max_price": {
-                                "type": "number",
-                                "description": "最高价格（可选）"
-                            }
-                        },
-                        "required": ["query"]
-                    }
-                }
-            },
-            {
-                "type": "function",
-                "function": {
-                    "name": "get_product_details",
-                    "description": "获取商品详细信息",
-                    "parameters": {
-                        "type": "object",
-                        "properties": {
-                            "product_id": {
-                                "type": "integer",
-                                "description": "商品ID"
-                            }
-                        },
-                        "required": ["product_id"]
-                    }
-                }
-            },
-            {
-                "type": "function",
-                "function": {
                     "name": "recommend_products",
-                    "description": "根据用户需求推荐商品",
+                    "description": "Recommend products from the predefined catalog based on user needs.",
                     "parameters": {
                         "type": "object",
                         "properties": {
                             "user_preferences": {
                                 "type": "string",
-                                "description": "用户偏好描述"
+                                "description": "User preference or query (e.g., 'sports t-shirt')."
                             },
                             "budget": {
                                 "type": "number",
-                                "description": "预算范围（可选）"
+                                "description": "Optional budget limit."
                             }
                         },
                         "required": ["user_preferences"]
+                    }
+                }
+            },
+            {
+                "type": "function",
+                "function": {
+                    "name": "search_by_image",
+                    "description": "Image-based product search within the predefined catalog.",
+                    "parameters": {
+                        "type": "object",
+                        "properties": {
+                            "image_url": {
+                                "type": "string",
+                                "description": "URL of the image to search by."
+                            }
+                        },
+                        "required": ["image_url"]
                     }
                 }
             }
@@ -96,11 +79,9 @@ class AgentService:
         context: ConversationContext = None
     ) -> Dict[str, Any]:
         """
-        生成AI回复，支持工具调用
+        Generate AI response with optional tool usage (English-only outputs).
         """
         try:
-            # 模拟模式：无需真实API，直接给出演示响应
-
             log.info("conversation_history: %s", conversation_history)
             
             # 构建消息历史
@@ -141,6 +122,7 @@ class AgentService:
                 log.info(f"AI decided to use tools: {response_message.tool_calls}")
                 
                 # 执行工具调用
+                tool_results = []
                 for tool_call in response_message.tool_calls:
                     function_name = tool_call.function.name
                     function_args = json.loads(tool_call.function.arguments)
@@ -155,7 +137,22 @@ class AgentService:
                         "name": function_name,
                         "content": json.dumps(tool_result, ensure_ascii=False)
                     })
+                    tool_results.append({
+                        "function": function_name,
+                        "arguments": function_args,
+                        "result": tool_result
+                    })
                 
+                # 在第二次调用前追加简短指令：使用工具结果生成自然语言推荐
+                messages.append({
+                    "role": "system",
+                    "content": (
+                        "Use the tool results above to craft a concise, natural recommendation. "
+                        "Do not mention tools or internal IDs. Refer to product names (and price if helpful). "
+                        "Reply in English and keep it to 1–2 sentences."
+                    )
+                })
+
                 # 第二次调用：基于工具结果生成最终回复
                 final_response = self.client.chat.completions.create(
                     model="gpt-4o-mini",
@@ -166,17 +163,7 @@ class AgentService:
                 
                 return {
                     "response": final_response.choices[0].message.content,
-                    "tool_calls": [
-                        {
-                            "function": tool_call.function.name,
-                            "arguments": json.loads(tool_call.function.arguments),
-                            "result": await self._execute_tool(
-                                tool_call.function.name, 
-                                json.loads(tool_call.function.arguments)
-                            )
-                        }
-                        for tool_call in response_message.tool_calls
-                    ]
+                    "tool_calls": tool_results
                 }
             else:
                 # AI决定不使用工具，直接回复
@@ -189,104 +176,54 @@ class AgentService:
         except Exception as e:
             log.exception("Agent Service encountered an error")
             return {
-                "response": "抱歉，我现在无法处理您的请求。请稍后再试。",
+                "response": "Sorry, I cannot process your request right now. Please try again later.",
                 "tool_calls": []
             }
 
     
     async def _execute_tool(self, function_name: str, arguments: Dict) -> Any:
         """
-        执行具体的工具函数
+        Execute specific tool function.
         """
-        if function_name == "search_products":
-            return await self._search_products(**arguments)
-        elif function_name == "get_product_details":
-            return await self._get_product_details(**arguments)
-        elif function_name == "recommend_products":
+        if function_name == "recommend_products":
             return await self._recommend_products(**arguments)
+        elif function_name == "search_by_image":
+            return await self._search_by_image(**arguments)
         else:
             return {"error": f"Unknown function: {function_name}"}
 
-    async def _search_products(self, query: str, category: str = None, max_price: float = None) -> List[Dict]:
-        """
-        搜索商品的具体实现
-        """
-        # 这里是示例数据，实际应该查询数据库
-        sample_products = [
-            {
-                "id": 1,
-                "name": "运动T恤",
-                "description": "透气舒适的运动T恤",
-                "price": 89.0,
-                "category": "服装",
-                "brand": "Nike"
-            },
-            {
-                "id": 2,
-                "name": "无线蓝牙耳机",
-                "description": "高音质无线蓝牙耳机",
-                "price": 299.0,
-                "category": "电子产品",
-                "brand": "Sony"
-            }
-        ]
-        
-        # 简单的搜索逻辑
-        results = []
-        for product in sample_products:
-            if query.lower() in product["name"].lower() or query.lower() in product["description"].lower():
-                if category is None or product["category"] == category:
-                    if max_price is None or product["price"] <= max_price:
-                        results.append(product)
-        
-        return results
 
-    async def _get_product_details(self, product_id: int) -> Dict:
+    async def _recommend_products(self, user_preferences: str, budget: float = None, min_similarity: float = 0.5) -> List[Dict]:
         """
-        获取商品详情的具体实现
+        Recommend products via text similarity (FAISS) from predefined catalog.
+        Unified to use recommendation_service.recommend_by_text for single source of truth.
         """
-        # 示例实现
-        sample_products = {
-            1: {
-                "id": 1,
-                "name": "运动T恤",
-                "description": "透气舒适的运动T恤，适合健身和日常穿着",
-                "price": 89.0,
-                "category": "服装",
-                "brand": "Nike",
-                "stock": 50,
-                "rating": 4.5
-            },
-            2: {
-                "id": 2,
-                "name": "无线蓝牙耳机",
-                "description": "高音质无线蓝牙耳机，降噪功能强大",
-                "price": 299.0,
-                "category": "电子产品",
-                "brand": "Sony",
-                "stock": 30,
-                "rating": 4.8
-            }
-        }
-        
-        return sample_products.get(product_id, {"error": "Product not found"})
+        db = SessionLocal()
+        try:
+            # Query with similarity scores, then apply threshold filtering
+            hits = vs_query_with_scores(db, query_text=user_preferences, top_k=2)
+            recs = []
+            for p, score in hits:
+                if score < min_similarity:
+                    continue
+                recs.append({
+                    "id": p.id,
+                    "name": p.name,
+                    "price": p.price,
+                    "category": p.category,
+                    "brand": p.brand,
+                    "similarity": score,
+                    "reason": f"Recommended based on your preferences: '{user_preferences}'"
+                })
+            if budget is not None:
+                recs = [r for r in recs if r["price"] is not None and r["price"] <= budget]
+            return recs
+        finally:
+            db.close()
 
-    async def _recommend_products(self, user_preferences: str, budget: float = None) -> List[Dict]:
+    async def _search_by_image(self, image_url: str) -> List[Dict]:
         """
-        推荐商品的具体实现
+        Image-based product search within predefined catalog (placeholder).
         """
-        # 这里应该有更复杂的推荐算法
-        # 目前返回示例数据
-        recommendations = [
-            {
-                "id": 1,
-                "name": "运动T恤",
-                "price": 89.0,
-                "reason": "根据您的需求，这款运动T恤透气舒适，适合运动"
-            }
-        ]
-        
-        if budget:
-            recommendations = [p for p in recommendations if p["price"] <= budget]
-            
-        return recommendations
+        # TODO: integrate real image search. For now, return empty list.
+        return []

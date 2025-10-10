@@ -41,43 +41,59 @@ async def init_db():
         try:
             count = db.query(Product).count()
             if count == 0:
-                seed_products = [
-                    {
-                        "id": 1,
-                        "name": "运动T恤",
-                        "description": "透气舒适的运动T恤，适合健身和日常穿着",
-                        "price": 89.0,
-                        "category": "服装",
-                        "brand": "Nike",
-                        "image_url": "https://example.com/tshirt.jpg",
-                        "tags": ["运动", "T恤", "透气"],
-                        "stock": 50,
-                        "rating": 4.5,
-                        "created_at": "2024-01-01T00:00:00"
-                    },
-                    {
-                        "id": 2,
-                        "name": "无线蓝牙耳机",
-                        "description": "高音质无线蓝牙耳机，降噪功能强大",
-                        "price": 299.0,
-                        "category": "电子产品",
-                        "brand": "Sony",
-                        "image_url": "https://example.com/headphones.jpg",
-                        "tags": ["耳机", "蓝牙", "降噪"],
-                        "stock": 30,
-                        "rating": 4.8,
-                        "created_at": "2024-01-01T00:00:00"
-                    }
-                ]
+                # 优先从外部 JSON 文件加载种子数据
+                base_dir = os.path.abspath(os.path.join(os.path.dirname(__file__), "../../"))
+                seed_path = os.path.join(base_dir, "data", "products_seed.json")
+
+                seed_products = []
+                if os.path.exists(seed_path):
+                    try:
+                        with open(seed_path, "r", encoding="utf-8") as f:
+                            data = json.load(f)
+                        # 支持两种格式：数组或 {"products": [...]} 包装
+                        seed_products = data.get("products", data) if isinstance(data, dict) else data
+                    except Exception:
+                        seed_products = []
+
+                # 如果外部文件不可用，回退到内置最小数据集，确保可启动
+                if not isinstance(seed_products, list) or not seed_products:
+                    seed_products = [
+                        {
+                            "id": 1,
+                            "name": "Sports T-Shirt",
+                            "description": "Breathable, lightweight sports t-shirt for workouts and daily wear.",
+                            "price": 29.99,
+                            "category": "Clothing",
+                            "brand": "Nike",
+                            "image_url": "https://example.com/sports-tshirt.jpg",
+                            "tags": ["sports", "tshirt", "breathable"],
+                            "stock": 50,
+                            "rating": 4.5,
+                            "created_at": "2024-01-01T00:00:00"
+                        },
+                        {
+                            "id": 2,
+                            "name": "Wireless Bluetooth Headphones",
+                            "description": "High-quality wireless headphones with powerful noise cancellation.",
+                            "price": 129.0,
+                            "category": "Electronics",
+                            "brand": "Sony",
+                            "image_url": "https://example.com/headphones.jpg",
+                            "tags": ["headphones", "bluetooth", "noise-cancelling"],
+                            "stock": 30,
+                            "rating": 4.8,
+                            "created_at": "2024-01-01T00:00:00"
+                        }
+                    ]
 
                 for p in seed_products:
                     db.add(
                         Product(
-                            id=p["id"],
-                            name=p["name"],
-                            description=p["description"],
-                            price=p["price"],
-                            category=p["category"],
+                            id=p.get("id"),
+                            name=p.get("name"),
+                            description=p.get("description"),
+                            price=p.get("price", 0.0),
+                            category=p.get("category"),
                             brand=p.get("brand"),
                             image_url=p.get("image_url"),
                             tags=json.dumps(p.get("tags", []), ensure_ascii=False),
@@ -102,5 +118,57 @@ def get_db():
     db = SessionLocal()
     try:
         yield db
+    finally:
+        db.close()
+
+def reseed_products():
+    """
+    从外部种子文件重新导入商品数据：
+    - 清空现有 products 表
+    - 从 backend/data/products_seed.json 加载并插入
+    """
+    from app.models.product import Product
+    base_dir = os.path.abspath(os.path.join(os.path.dirname(__file__), "../../"))
+    seed_path = os.path.join(base_dir, "data", "products_seed.json")
+
+    db = SessionLocal()
+    try:
+        # 清空表
+        db.query(Product).delete()
+        db.commit()
+
+        # 加载种子
+        seed_products = []
+        if os.path.exists(seed_path):
+            try:
+                with open(seed_path, "r", encoding="utf-8") as f:
+                    data = json.load(f)
+                seed_products = data.get("products", data) if isinstance(data, dict) else data
+            except Exception:
+                seed_products = []
+
+        if not isinstance(seed_products, list) or not seed_products:
+            # 无数据则直接返回
+            return 0
+
+        from datetime import datetime
+        for p in seed_products:
+            db.add(
+                Product(
+                    id=p.get("id"),
+                    name=p.get("name"),
+                    description=p.get("description"),
+                    price=p.get("price", 0.0),
+                    category=p.get("category"),
+                    brand=p.get("brand"),
+                    image_url=p.get("image_url"),
+                    tags=json.dumps(p.get("tags", []), ensure_ascii=False),
+                    stock=p.get("stock", 0),
+                    rating=p.get("rating", 0.0),
+                    created_at=datetime.fromisoformat(p["created_at"]) if p.get("created_at") else datetime.utcnow()
+                )
+            )
+        db.commit()
+        return len(seed_products)
     finally:
         db.close()

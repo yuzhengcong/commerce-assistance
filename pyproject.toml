@@ -17,6 +17,7 @@ dependencies = [
     "numpy>=1.25.2",
     "pymysql>=1.1.0",
     "faiss-cpu>=1.8.0",
+    "huggingface-hub>=0.20.3",
     "python-jose[cryptography]>=3.3.0",
     "passlib[bcrypt]>=1.7.4",
     "httpx>=0.25.2",

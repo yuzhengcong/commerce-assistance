@@ -47,6 +47,7 @@ class ProductSearchRequest(BaseModel):
     category: Optional[str] = None
     max_price: Optional[float] = None
     min_rating: Optional[float] = None
+    
 
 class ImageSearchRequest(BaseModel):
     image_data: str  # base64 encoded image

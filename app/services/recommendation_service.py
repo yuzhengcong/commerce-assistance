@@ -7,7 +7,7 @@ from app.services.vector_store import query as vs_query, build_index
 
 log = logging.getLogger("recommendation_service")
 
-def recommend_by_text(db: Session, query: str, top_k: int = 5) -> List[ProductResponse]:
+def recommend_by_text(db: Session, query: str, top_k: int = 1) -> List[ProductResponse]:
     products = vs_query(db, query_text=query, top_k=top_k)
     return [
         ProductResponse(
