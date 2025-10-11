@@ -2,6 +2,7 @@ import openai
 import os
 import json
 from typing import List, Dict, Optional, Any
+from datetime import datetime
 from app.models.chat import ChatMessage, ConversationContext
 from app.models.product import ProductResponse
 import logging; 
@@ -15,6 +16,9 @@ class AgentService:
         api_key = os.getenv("OPENAI_API_KEY")
         self.client = openai.OpenAI(api_key=api_key)
         self.mock_mode = False
+        # Context compression configuration
+        self.max_history_turns = 4
+        self.keep_recent_turns = 2
         self.system_prompt = """You are a helpful shopping assistant for an e-commerce site.
 
         Capabilities:
@@ -30,7 +34,8 @@ class AgentService:
           For example: "I recommend the blue t-shirt for you." Do not mention tools or IDs.
           Prefer top relevant items; reference product names (and price if helpful)."""
 
-        # Define available tools (English, limited to catalog)
+    
+
         self.tools = [
             {
                 "type": "function",
@@ -72,6 +77,53 @@ class AgentService:
             }
         ]
 
+    def _summarize_history(self, conversation_history: List[ChatMessage]) -> Optional[str]:
+        """Summarize earlier conversation turns to reduce context length.
+        Keeps the most recent turns intact and summarizes the rest.
+        """
+        try:
+            if not conversation_history or len(conversation_history) <= self.keep_recent_turns:
+                return None
+            older = conversation_history[:-self.keep_recent_turns]
+            if not older:
+                return None
+
+            # Build messages for summarization
+            messages = [
+                {
+                    "role": "system",
+                    "content": (
+                        "You are an assistant that produces a brief, neutral conversation summary. "
+                        "Capture the user's preferences, constraints (e.g., budget), decisions taken, and any pending questions. "
+                        "Keep it under 120 words, in English."
+                    ),
+                }
+            ]
+            for msg in older[-20:]:
+                messages.append({
+                    "role": msg.role,
+                    "content": msg.content,
+                })
+
+            resp = self.client.chat.completions.create(
+                model="gpt-4o-mini",
+                messages=messages,
+                max_tokens=200,
+                temperature=0.2,
+            )
+            return resp.choices[0].message.content
+        except Exception:
+            log.exception("History summarization failed")
+            return None
+
+
+    def summarize_for_memory(self, conversation_history: List[ChatMessage]) -> Optional[ChatMessage]:
+        """Summarize earlier history and return a system ChatMessage for persistence."""
+        summary = self._summarize_history(conversation_history)
+        if summary:
+            return ChatMessage(role="system", content=f"Conversation summary: {summary}", timestamp=datetime.now())
+        return None
+    
     async def generate_response(
         self, 
         user_message: str, 
@@ -84,14 +136,28 @@ class AgentService:
         try:
             log.info("conversation_history: %s", conversation_history)
             
-            # 构建消息历史
+            # 构建消息历史（支持上下文压缩）
             messages = [{"role": "system", "content": self.system_prompt}]
+            # 若会话中已有持久化的摘要消息，则纳入上下文
+            if conversation_history:
+                for msg in reversed(conversation_history):
+                    if msg.role == "system" and isinstance(msg.content, str) and msg.content.startswith("Conversation summary:"):
+                        messages.append({"role": "system", "content": msg.content})
+                        break
+            if conversation_history and len(conversation_history) > self.max_history_turns:
+                summary = self._summarize_history(conversation_history)
+                if summary:
+                    messages.append({
+                        "role": "system",
+                        "content": f"Conversation summary: {summary}"
+                    })
             log.debug("System prompt prepared for chat completion")
             
             
-            # 添加对话历史
+            # 添加最近对话历史
             if conversation_history:
-                for msg in conversation_history[-10:]:
+                recent = conversation_history[-self.keep_recent_turns:]
+                for msg in recent:
                     messages.append({
                         "role": msg.role,
                         "content": msg.content
@@ -225,5 +291,63 @@ class AgentService:
         """
         Image-based product search within predefined catalog (placeholder).
         """
-        # TODO: integrate real image search. For now, return empty list.
-        return []
+        db = SessionLocal()
+        try:
+            # 1) 使用视觉模型从图片中提取用于检索的简短英文描述/关键词
+            vision_messages = [
+                {
+                    "role": "system",
+                    "content": (
+                        "You analyze a shopping product photo and produce a concise English query "
+                        "that captures product type, visible brand if any, and key attributes like color/material. "
+                        "Return a short phrase (<=12 words), no full sentences."
+                    ),
+                },
+                {
+                    "role": "user",
+                    "content": [
+                        {"type": "text", "text": "Describe the product for catalog search."},
+                        {"type": "image_url", "image_url": {"url": image_url}},
+                    ],
+                },
+            ]
+
+            vision_resp = self.client.chat.completions.create(
+                model="gpt-4o-mini",
+                messages=vision_messages,
+                max_tokens=60,
+                temperature=0.2,
+            )
+            query_text = (vision_resp.choices[0].message.content or "").strip()
+            log.info("Image vision query_text: %s", query_text)
+            if not query_text:
+                return []
+
+            # 2) 使用提取的文本在 FAISS 索引中进行相似度检索
+            top_k = 5
+            min_similarity = 0.4
+            hits = vs_query_with_scores(db, query_text=query_text, top_k=top_k)
+            log.debug("FAISS hits: %s", [(getattr(p, 'name', None), s) for p, s in hits])
+            results: List[Dict] = []
+            for p, score in hits:
+                if score < min_similarity:
+                    continue
+                results.append({
+                    "id": p.id,
+                    "name": p.name,
+                    "price": p.price,
+                    "category": p.category,
+                    "brand": p.brand,
+                    "similarity": score,
+                    "reason": f"Matched image query: '{query_text}'",
+                })
+            try:
+                log.info("Image search results (%d): %s", len(results), json.dumps(results, ensure_ascii=False))
+            except Exception:
+                log.warning("Failed to dump image search results for logging")
+            return results
+        except Exception:
+            log.exception("Image-based search failed")
+            return []
+        finally:
+            db.close()

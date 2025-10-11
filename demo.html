@@ -1,9 +1,9 @@
 <!DOCTYPE html>
-<html lang="zh-CN">
+<html lang="en">
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>AI电商助手 - Agent工具调用演示</title>
+    <title>Rufus beta – Commerce Assistant</title>
     <style>
         body {
             font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
@@ -24,12 +24,12 @@
             margin-bottom: 30px;
         }
         .chat-container {
-            border: 1px solid #ddd;
-            border-radius: 8px;
-            height: 400px;
+            border: 1px solid #e5e7eb;
+            border-radius: 12px;
+            height: 520px;
             overflow-y: auto;
-            padding: 15px;
-            margin-bottom: 20px;
+            padding: 18px;
+            margin-bottom: 16px;
             background-color: #fafafa;
         }
         .message {
@@ -38,14 +38,14 @@
             border-radius: 8px;
         }
         .user-message {
-            background-color: #007bff;
-            color: white;
-            margin-left: 20%;
+            background-color: #f3f4f6;
+            color: #111827;
+            margin-left: 30%;
         }
         .assistant-message {
-            background-color: #e9ecef;
-            color: #333;
-            margin-right: 20%;
+            background-color: #eef1f5;
+            color: #111827;
+            margin-right: 30%;
         }
         .tool-call {
             background-color: #fff3cd;
@@ -57,69 +57,117 @@
         }
         .input-container {
             display: flex;
+            align-items: center;
             gap: 10px;
+            background: #ffffff;
+            border: 1px solid #e5e7eb;
+            border-radius: 12px;
+            padding: 8px;
         }
-        input[type="text"] {
+        .icon-button {
+            width: 36px;
+            height: 36px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            background: transparent;
+            border: none;
+            color: #6b7280;
+            border-radius: 8px;
+            cursor: pointer;
+        }
+        .icon-button:hover { background: #f3f4f6; color: #111827; }
+        #messageInput {
             flex: 1;
-            padding: 12px;
-            border: 1px solid #ddd;
-            border-radius: 5px;
+            padding: 10px 12px;
+            border: 1px solid #e5e7eb;
+            border-radius: 10px;
             font-size: 16px;
         }
-        button {
-            padding: 12px 20px;
-            background-color: #007bff;
+        .send-button {
+            padding: 10px 18px;
+            background-color: #111827;
             color: white;
             border: none;
-            border-radius: 5px;
+            border-radius: 10px;
             cursor: pointer;
             font-size: 16px;
         }
-        button:hover {
-            background-color: #0056b3;
+        .send-button:hover { background-color: #1f2937; }
+        .file-pill {
+            display: none;
+            align-items: center;
+            gap: 6px;
+            background: #f3f4f6;
+            color: #374151;
+            border: 1px solid #e5e7eb;
+            border-radius: 999px;
+            padding: 6px 10px;
+            font-size: 13px;
+        }
+        .clear-button {
+            background: transparent;
+            border: none;
+            color: #6b7280;
+            cursor: pointer;
+            font-size: 16px;
+            line-height: 1;
         }
         .example-queries {
             margin-top: 20px;
             padding: 15px;
-            background-color: #e8f4fd;
+            background-color: #f8fafc;
             border-radius: 5px;
         }
         .example-query {
             display: inline-block;
             margin: 5px;
-            padding: 5px 10px;
-            background-color: #007bff;
-            color: white;
-            border-radius: 15px;
+            padding: 6px 12px;
+            background-color: #f3f4f6;
+            color: #111827;
+            border: 1px solid #e5e7eb;
+            border-radius: 999px;
             cursor: pointer;
             font-size: 14px;
         }
         .example-query:hover {
-            background-color: #0056b3;
+            background-color: #e5e7eb;
         }
+        /* cleaned legacy input styles that caused blue overrides */
+        /* (removed) feedback and follow-up suggestions styles */
     </style>
 </head>
 <body>
     <div class="container">
-        <h1>🤖 AI电商助手 - Agent工具调用演示</h1>
+        <h1>Rufus beta – Commerce Assistant</h1>
         
         <div class="chat-container" id="chatContainer">
             <div class="message assistant-message">
-                <strong>AI助手:</strong> 你好！我是AI电商助手，我可以帮你搜索商品、获取商品详情、推荐商品等。试试问我一些问题吧！
+                <strong>Assistant:</strong> Hi! I’m your commerce assistant. I can search products, get details, and make recommendations. Ask me anything!
             </div>
         </div>
         
         <div class="input-container">
-            <input type="text" id="messageInput" placeholder="输入你的问题..." onkeypress="handleKeyPress(event)">
-            <button onclick="sendMessage()">发送</button>
+            <button class="icon-button" id="imageUploadButton" title="Upload image" onclick="triggerImageUpload()">
+                <!-- image icon -->
+                <svg width="20" height="20" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
+                    <path d="M4 5a2 2 0 0 1 2-2h12a2 2 0 0 1 2 2v12a2 2 0 0 1-2 2H6a2 2 0 0 1-2-2V5z" stroke="currentColor" stroke-width="1.5"/>
+                    <path d="M8.5 10.5l2.75 3.5 2-2.5 3.75 5H6.5l2-6.5z" fill="currentColor" opacity="0.25"/>
+                    <circle cx="9" cy="8" r="1.5" stroke="currentColor" stroke-width="1.5"/>
+                </svg>
+            </button>
+            <input type="text" id="messageInput" placeholder="Ask a follow-up question" onkeypress="handleKeyPress(event)">
+            <span id="fileStatus" class="file-pill"><span id="fileName"></span><button class="clear-button" title="Remove image" onclick="clearImage()">×</button></span>
+            <button class="send-button" onclick="sendUnified()">Send</button>
+            <input type="file" id="imageInput" accept="image/*" style="display:none">
         </div>
         
         <div class="example-queries">
-            <strong>示例问题：</strong><br>
-            <span class="example-query" onclick="setMessage('我想买一件运动T恤')">我想买一件运动T恤</span>
-            <span class="example-query" onclick="setMessage('推荐一些300元以下的耳机')">推荐一些300元以下的耳机</span>
-            <span class="example-query" onclick="setMessage('商品ID为1的详细信息')">商品ID为1的详细信息</span>
-            <span class="example-query" onclick="setMessage('搜索Nike品牌的商品')">搜索Nike品牌的商品</span>
+            <strong>Example questions:</strong><br>
+            <span class="example-query" onclick="setMessage('I want to buy a sports T-shirt')">I want to buy a sports T‑shirt</span>
+            <span class="example-query" onclick="setMessage('Recommend headphones under 300 RMB')">Recommend headphones under 300 RMB</span>
+            <span class="example-query" onclick="setMessage('Show details for product ID 1')">Show details for product ID 1</span>
+            <span class="example-query" onclick="setMessage('Search products from Nike brand')">Search products from Nike brand</span>
         </div>
     </div>
 
@@ -128,13 +176,48 @@
 
         function handleKeyPress(event) {
             if (event.key === 'Enter') {
-                sendMessage();
+                sendUnified();
             }
         }
 
         function setMessage(message) {
             document.getElementById('messageInput').value = message;
         }
+
+        function triggerImageUpload() {
+            const fileInput = document.getElementById('imageInput');
+            fileInput.click();
+        }
+
+        function truncateFileName(name) {
+            if (!name) return '';
+            return name.length <= 24 ? name : `${name.slice(0, 12)}…${name.slice(-8)}`;
+        }
+
+        function clearImage() {
+            const fileInput = document.getElementById('imageInput');
+            fileInput.value = '';
+            const pill = document.getElementById('fileStatus');
+            pill.style.display = 'none';
+            document.getElementById('fileName').textContent = '';
+        }
+
+        // Update pill when image selected
+        document.addEventListener('DOMContentLoaded', () => {
+            const fileInput = document.getElementById('imageInput');
+            const pill = document.getElementById('fileStatus');
+            const fileNameEl = document.getElementById('fileName');
+            fileInput.addEventListener('change', () => {
+                const f = fileInput.files && fileInput.files[0];
+                if (f) {
+                    fileNameEl.textContent = truncateFileName(f.name);
+                    pill.style.display = 'inline-flex';
+                } else {
+                    pill.style.display = 'none';
+                    fileNameEl.textContent = '';
+                }
+            });
+        });
 
         async function sendMessage() {
             const messageInput = document.getElementById('messageInput');
@@ -159,37 +242,95 @@
                 });
                 
                 if (!response.ok) {
-                    throw new Error('网络请求失败');
+                    throw new Error('Network request failed');
                 }
                 
                 const data = await response.json();
                 conversationId = data.conversation_id;
                 
-                // 显示AI回复
+                // Show AI reply
                 addMessage('assistant', data.message, data.tool_calls);
                 
             } catch (error) {
                 console.error('Error:', error);
-                addMessage('assistant', '抱歉，发生了错误。请确保后端服务正在运行。');
+                addMessage('assistant', 'Sorry, an error occurred. Please ensure the backend service is running.');
             }
         }
+
+        async function searchByImage() {
+            const fileInput = document.getElementById('imageInput');
+            const file = fileInput.files && fileInput.files[0];
+            if (!file) {
+                addMessage('assistant', 'Please select an image first.');
+                return;
+            }
+
+            // Show user action
+            addMessage('user', `Image search: ${file.name}`);
+
+            try {
+                const formData = new FormData();
+                formData.append('file', file);
+
+                const response = await fetch('http://localhost:8000/api/products/image-search', {
+                    method: 'POST',
+                    body: formData
+                });
+
+                if (!response.ok) {
+                    throw new Error('Network request failed');
+                }
+
+                const data = await response.json();
+                const results = data.results || [];
+                const message = data.message || '';
+
+                // Show backend-composed natural language message first (English)
+                if (message) {
+                    addMessage('assistant', message);
+                }
+
+                if (!results.length) {
+                    // English fallback when there are no results
+                    if (!message) {
+                        addMessage('assistant', 'No matching products found. Try a clearer image or different angle.');
+                    }
+                    return;
+                }
+
+                // Also render a bullet list of matched products
+                const lines = results.map((r) => {
+                    const price = r.price != null ? ` ¥${r.price}` : '';
+                    const brand = r.brand ? ` · ${r.brand}` : '';
+                    const score = r.similarity != null ? ` (similarity ${r.similarity.toFixed(2)})` : '';
+                    return `- ${r.name}${brand}${price}${score}`;
+                }).join('\n');
+
+                addMessage('assistant', `Matches:\n${lines}`);
+            } catch (error) {
+                console.error('Error:', error);
+                addMessage('assistant', 'Sorry, image search encountered an error. Please ensure the backend service is running.');
+            }
+        }
+
+        // (removed) follow-up suggestion logic
 
         function addMessage(role, content, toolCalls = []) {
             const chatContainer = document.getElementById('chatContainer');
             const messageDiv = document.createElement('div');
             messageDiv.className = `message ${role}-message`;
             
-            let messageContent = `<strong>${role === 'user' ? '用户' : 'AI助手'}:</strong> ${content}`;
+            let messageContent = `<strong>${role === 'user' ? 'You' : 'Assistant'}:</strong> ${content}`;
             
-            // 如果有工具调用，显示工具调用信息
+            // Show tool call info if present
             if (toolCalls && toolCalls.length > 0) {
-                messageContent += '<br><br><strong>🔧 工具调用:</strong>';
+                messageContent += '<br><br><strong>🔧 Tool Calls:</strong>';
                 toolCalls.forEach(toolCall => {
                     messageContent += `
                         <div class="tool-call">
-                            <strong>调用工具:</strong> ${toolCall.function}<br>
-                            <strong>参数:</strong> ${JSON.stringify(toolCall.arguments, null, 2)}<br>
-                            <strong>结果:</strong> ${JSON.stringify(toolCall.result, null, 2)}
+                            <strong>Tool:</strong> ${toolCall.function}<br>
+                            <strong>Arguments:</strong> ${JSON.stringify(toolCall.arguments, null, 2)}<br>
+                            <strong>Result:</strong> ${JSON.stringify(toolCall.result, null, 2)}
                         </div>
                     `;
                 });
@@ -198,6 +339,19 @@
             messageDiv.innerHTML = messageContent;
             chatContainer.appendChild(messageDiv);
             chatContainer.scrollTop = chatContainer.scrollHeight;
+
+            // (removed) feedback and follow-up chips for assistant messages
+        }
+        function sendUnified() {
+            const fileInput = document.getElementById('imageInput');
+            const hasFile = fileInput && fileInput.files && fileInput.files[0];
+            if (hasFile) {
+                // Prioritize image search when a file is selected
+                searchByImage();
+            } else {
+                // Fallback to text chat
+                sendMessage();
+            }
         }
     </script>
 </body>
