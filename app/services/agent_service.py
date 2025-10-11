@@ -34,8 +34,6 @@ class AgentService:
           For example: "I recommend the blue t-shirt for you." Do not mention tools or IDs.
           Prefer top relevant items; reference product names (and price if helpful)."""
 
-    
-
         self.tools = [
             {
                 "type": "function",

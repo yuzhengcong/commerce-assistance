@@ -1,0 +1,16 @@
+version: "3.9"
+services:
+  backend:
+    build: .
+    container_name: commerce-ai-backend
+    ports:
+      - "8000:8000"
+    environment:
+      OPENAI_API_KEY: ${OPENAI_API_KEY}
+      DATABASE_URL: ${DATABASE_URL:-sqlite:///./commerce.db}
+      SECRET_KEY: ${SECRET_KEY}
+      CORS_ORIGINS: ${CORS_ORIGINS:-http://localhost:3000,http://localhost:5173}
+    volumes:
+      - ./commerce.db:/app/commerce.db
+      - ./data:/app/data
+    restart: unless-stopped

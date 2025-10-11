@@ -297,16 +297,7 @@
                     }
                     return;
                 }
-
-                // Also render a bullet list of matched products
-                const lines = results.map((r) => {
-                    const price = r.price != null ? ` ¥${r.price}` : '';
-                    const brand = r.brand ? ` · ${r.brand}` : '';
-                    const score = r.similarity != null ? ` (similarity ${r.similarity.toFixed(2)})` : '';
-                    return `- ${r.name}${brand}${price}${score}`;
-                }).join('\n');
-
-                addMessage('assistant', `Matches:\n${lines}`);
+                // Do not show detailed match list; only the concise summary above
             } catch (error) {
                 console.error('Error:', error);
                 addMessage('assistant', 'Sorry, image search encountered an error. Please ensure the backend service is running.');
