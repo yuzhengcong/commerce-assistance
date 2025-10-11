@@ -230,7 +230,7 @@
             messageInput.value = '';
             
             try {
-                const response = await fetch('http://localhost:8000/api/chat', {
+                const response = await fetch('/api/chat', {
                     method: 'POST',
                     headers: {
                         'Content-Type': 'application/json',
@@ -272,7 +272,7 @@
                 const formData = new FormData();
                 formData.append('file', file);
 
-                const response = await fetch('http://localhost:8000/api/products/image-search', {
+                const response = await fetch('/api/products/image-search', {
                     method: 'POST',
                     body: formData
                 });
