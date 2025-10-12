@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Rufus beta – Commerce Assistant</title>
+    <title>  Commerce Assistant</title>
     <style>
         body {
             font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
@@ -139,7 +139,7 @@
 </head>
 <body>
     <div class="container">
-        <h1>Rufus beta – Commerce Assistant</h1>
+        <h1> Commerce Assistant</h1>
         
         <div class="chat-container" id="chatContainer">
             <div class="message assistant-message">
@@ -313,7 +313,8 @@
             
             let messageContent = `<strong>${role === 'user' ? 'You' : 'Assistant'}:</strong> ${content}`;
             
-            // Show tool call info if present
+            /*
+            // Show tool call info if present (hidden per request)
             if (toolCalls && toolCalls.length > 0) {
                 messageContent += '<br><br><strong>🔧 Tool Calls:</strong>';
                 toolCalls.forEach(toolCall => {
@@ -326,6 +327,7 @@
                     `;
                 });
             }
+            */
             
             messageDiv.innerHTML = messageContent;
             chatContainer.appendChild(messageDiv);
