@@ -131,3 +131,9 @@ def query_with_scores(db: Session, query_text: str, top_k: int = 5) -> List[Tupl
                 if prod is not None:
                     hit.append((prod, float(D[0][pos])))
     return hit
+
+
+def rebuild_index(db: Session) -> int:
+    """Rebuild FAISS index from current products and return item count."""
+    index, ids = build_index(db)
+    return len(ids)

@@ -41,7 +41,7 @@ root_logger.handlers = []
 root_logger.addHandler(handler)
 root_logger.setLevel(logging.INFO)
 
-from app.api import chat, products, admin
+from app.api import routes
 from app.database.database import init_db
 
 app = FastAPI(
@@ -65,9 +65,7 @@ async def startup_event():
     await init_db()
 
 # Include routers
-app.include_router(chat.router, prefix="/api", tags=["chat"])
-app.include_router(products.router, prefix="/api", tags=["products"])
-app.include_router(admin.router, prefix="/api", tags=["admin"])
+app.include_router(routes.router, prefix="/api")
 
 @app.get("/")
 async def root():
