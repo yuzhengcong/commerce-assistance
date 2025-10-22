@@ -48,6 +48,17 @@ In this project, I mainly implemented the following features:
 - **Logging**
   - Colored application logs; optional access logs via Uvicorn flags if desired.
 
+## Architecture Diagram
+
+![Architecture](./image.png)
+
+Key flow:
+- `demo.html` → `POST /api/chat` → Context Manager builds `messages[]`.
+- LLM intent detection decides tool use and parameters (two-stage workflow).
+- Text recommendation: embeddings + FAISS top‑k similarity.
+- Image search: generate description (LLM) → embeddings + FAISS.
+- Tool outputs are fed back for a second LLM synthesis to produce the final reply.
+
 ## Project Layout
 
 - `app/main.py` – App factory, CORS, router registration, static/demo serving.
@@ -86,7 +97,7 @@ Below are the primary endpoints and their contracts. All paths are relative to t
     ```bash
     curl -s http://localhost:8000/api/chat \
       -H 'Content-Type: application/json' \
-      -d '{"message":"Recommend headphones under 300 RMB"}'
+      -d '{"message":"Recommend headphones under $300"}'
     ```
 
 ### Products
@@ -124,15 +135,15 @@ Below are the primary endpoints and their contracts. All paths are relative to t
 ## Intent Routing & Context Management
 
 ### Intent Routing (Tool‑Use)
-- Implemented in `app/services/agent_service.py` using OpenAI function‑calling.
+- Implemented in `app/services/agent.py` using function‑calling.
 - Tools:
-  - `recommend_products(user_preferences, budget?)` – text‑based product recommendation via FAISS similarity.
-  - `search_by_image(image_url)` – image‑based search over the catalog.
+  - `recommend_products(...)` – embeddings + FAISS similarity over the catalog.
+  - `search_by_image(...)` – generate a concise textual description via LLM, then embeddings + FAISS.
 - Flow:
   1) Build a compact message history (see Context below).
-  2) First completion: model decides whether to call tools (`tool_choice: auto`).
+  2) First completion: the model decides whether to call tools (`tool_choice: auto`) and parameters.
   3) Execute requested tools server‑side.
-  4) Append a short “system” nudge to synthesize a concise, natural recommendation.
+  4) Append a short system instruction to synthesize a concise, natural recommendation.
   5) Second completion: produce the final user‑facing message.
 - Logs record whether tools were used and basic tool metadata for debugging.
 
@@ -140,9 +151,10 @@ Below are the primary endpoints and their contracts. All paths are relative to t
 - Conversation Memory: `app/api/chat.py` keeps an in‑memory `conversation_memory: Dict[str, List[ChatMessage]]` keyed by `conversation_id`.
   - Suitable for demos; not durable across restarts.
   - The demo UI maintains `conversationId` on the client and passes it to `/api/chat` to continue threads.
-- Context Compression: `AgentService` uses a rolling window to keep the conversation compact:
-  - `max_history_turns = 4` and `keep_recent_turns = 2` to avoid prompt bloat.
-  - Only the most relevant turns are forwarded to the model along with the current user message.
+- Context Manager: `app/services/context.py` builds compact messages and controls summarization:
+  - Summarize history when turns exceed `max_history_turns` (default 4) while keeping `keep_recent_turns` (default 2).
+  - `build_messages()` injects the system prompt and attaches recent turns plus the current user message.
+  - When tools were used and you choose LLM synthesis, `add_tool_synthesis_instruction()` appends a brief system nudge for concise English output.
 - Optional Context: `ConversationContext` allows adding `user_preferences`, `current_products`, or arbitrary `session_data` to steer answers.
 
 ## Configuration
