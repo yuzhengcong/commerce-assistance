@@ -10,6 +10,7 @@ from app.services.tool import ToolExecutor
 import logging; 
 log = logging.getLogger("agent_service")
 
+
 class AgentService:
     def __init__(self):
         api_key = os.getenv("OPENAI_API_KEY")
